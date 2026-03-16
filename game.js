@@ -114,6 +114,89 @@ function createTank(x, y, color, isPlayer) {
   };
 }
 
+function rectBlockedByTerrain(rect) {
+  if (
+    rect.x < 0 ||
+    rect.y < 0 ||
+    rect.x + rect.w > canvas.width ||
+    rect.y + rect.h > canvas.height
+  ) {
+    return true;
+  }
+
+  if (state.walls.some((wall) => rectsOverlap(rect, wall))) {
+    return true;
+  }
+
+  if (state.water.some((tile) => rectsOverlap(rect, tile))) {
+    return true;
+  }
+
+  return state.base ? rectsOverlap(rect, state.base) : false;
+}
+
+function rectBlockedByTanks(rect, ignoreTank = null) {
+  const tanks = [state.player, ...state.enemies].filter(Boolean);
+  return tanks.some(
+    (tank) => tank !== ignoreTank && tank.alive && rectsOverlap(rect, tank),
+  );
+}
+
+function findSpawnPosition(preferredPositions, ignoreTank = null) {
+  const maxRadius = Math.max(MAP_COLS, MAP_ROWS);
+
+  for (let radius = 0; radius <= maxRadius; radius += 1) {
+    for (const preferred of preferredPositions) {
+      for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+          if (Math.max(Math.abs(offsetX), Math.abs(offsetY)) !== radius) {
+            continue;
+          }
+
+          const candidate = {
+            x: preferred.x + offsetX * TILE,
+            y: preferred.y + offsetY * TILE,
+            w: TILE,
+            h: TILE,
+          };
+
+          if (rectBlockedByTerrain(candidate) || rectBlockedByTanks(candidate, ignoreTank)) {
+            continue;
+          }
+
+          return { x: candidate.x, y: candidate.y };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+function spawnTank(preferredPositions, color, isPlayer, fallbackMessage) {
+  const safePosition = findSpawnPosition(preferredPositions);
+
+  if (!safePosition) {
+    const spawn = { x: 0, y: 0 };
+    const tank = createTank(spawn.x, spawn.y, color, isPlayer);
+    tank.alive = false;
+
+    if (fallbackMessage) {
+      updateHud(fallbackMessage);
+    }
+
+    return tank;
+  }
+
+  const tank = createTank(safePosition.x, safePosition.y, color, isPlayer);
+
+  if (fallbackMessage && (safePosition.x !== preferredPositions[0].x || safePosition.y !== preferredPositions[0].y)) {
+    updateHud(fallbackMessage);
+  }
+
+  return tank;
+}
+
 function resetWorld() {
   state.walls = [];
   state.water = [];
@@ -128,7 +211,16 @@ function resetWorld() {
   state.victory = false;
   state.spawnTimer = 0;
   loadMap();
-  state.player = createTank(TILE * 12, TILE * 23, COLORS.player, true);
+  state.player = spawnTank(
+    [
+      { x: TILE * 12, y: TILE * 21 },
+      { x: TILE * 11, y: TILE * 21 },
+      { x: TILE * 13, y: TILE * 21 },
+    ],
+    COLORS.player,
+    true,
+    "出生点受阻，已使用后备位置",
+  );
   updateHud("准备战斗");
 }
 
@@ -164,7 +256,16 @@ function updateHud(message) {
 }
 
 function restartPlayer() {
-  state.player = createTank(TILE * 12, TILE * 23, COLORS.player, true);
+  state.player = spawnTank(
+    [
+      { x: TILE * 12, y: TILE * 21 },
+      { x: TILE * 11, y: TILE * 21 },
+      { x: TILE * 13, y: TILE * 21 },
+    ],
+    COLORS.player,
+    true,
+    "重生点受阻，已切换到安全位置",
+  );
 }
 
 function spawnEnemy() {
@@ -172,14 +273,23 @@ function spawnEnemy() {
     return;
   }
 
-  const spawnPoints = [TILE, TILE * 12, TILE * 24];
-  const x = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
-  const candidate = createTank(x, TILE, COLORS.enemy, false);
+  const spawnGroups = [
+    [{ x: TILE, y: 0 }, { x: TILE, y: TILE }],
+    [{ x: TILE * 12, y: 0 }, { x: TILE * 12, y: TILE }],
+    [{ x: TILE * 24, y: 0 }, { x: TILE * 24, y: TILE }],
+  ];
+  const preferredPositions =
+    spawnGroups[Math.floor(Math.random() * spawnGroups.length)];
+  const spawn = findSpawnPosition(preferredPositions);
+
+  if (!spawn) {
+    return;
+  }
+
+  const candidate = createTank(spawn.x, spawn.y, COLORS.enemy, false);
   candidate.dir = "down";
 
-  const blocked = [state.player, ...state.enemies].some((tank) =>
-    rectsOverlap(candidate, tank),
-  );
+  const blocked = rectBlockedByTerrain(candidate) || rectBlockedByTanks(candidate);
 
   if (!blocked) {
     state.enemies.push(candidate);
@@ -208,20 +318,7 @@ function fireBullet(tank) {
 }
 
 function tankBlocked(rect, tank) {
-  if (
-    rect.x < 0 ||
-    rect.y < 0 ||
-    rect.x + rect.w > canvas.width ||
-    rect.y + rect.h > canvas.height
-  ) {
-    return true;
-  }
-
-  if (state.walls.some((wall) => rectsOverlap(rect, wall))) {
-    return true;
-  }
-
-  if (state.water.some((tile) => rectsOverlap(rect, tile))) {
+  if (rectBlockedByTerrain(rect)) {
     return true;
   }
 
