@@ -19,10 +19,10 @@ const PLAYER_FIRE_COOLDOWN = 320;
 const ENEMY_FIRE_CHANCE = 0.012;
 
 const DIRS = {
-  up: { x: 0, y: -1, angle: -Math.PI / 2 },
-  down: { x: 0, y: 1, angle: Math.PI / 2 },
-  left: { x: -1, y: 0, angle: Math.PI },
-  right: { x: 1, y: 0, angle: 0 },
+  up: { x: 0, y: -1, angle: 0 },
+  right: { x: 1, y: 0, angle: Math.PI / 2 },
+  down: { x: 0, y: 1, angle: Math.PI },
+  left: { x: -1, y: 0, angle: -Math.PI / 2 },
 };
 
 const COLORS = {
